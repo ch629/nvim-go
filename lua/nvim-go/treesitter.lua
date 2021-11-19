@@ -4,8 +4,8 @@ local lsp = require'nvim-go.lsp'
 
 local M = {}
 
-function M.get_current_parser() 
-    return vim.treesitter.get_parser(bufnr, 'go'):parse()[1]
+function M.get_current_parser()
+    return vim.treesitter.get_parser(0, 'go'):parse()[1]
 end
 
 -- TODO: Are these actually needed for anything?
@@ -34,13 +34,11 @@ function M.get_import_package_names(bufnr)
     -- TODO: Remove underscore imports
     -- TODO: dot imports?
     for _, node in pairs(nodes) do
-            local import_text = ts_utils.get_node_text(node, bufnr)[1]
             -- Remove quotes
-            import_text = import_text:sub(2, #import_text - 1)
+            local import_text = ts_utils.get_node_text(node, bufnr)[1]:sub(2, -2)
             local splits = vim.split(import_text, '/')
-            -- get final value
-            import_text = splits[#splits]
-            table.insert(packages, import_text)
+            -- insert final value
+            table.insert(packages, splits[-1])
     end
     return packages
 end
@@ -53,7 +51,7 @@ function M.get_doc()
 end
 
 -- Climbs parents until a specific node type is found, if no node is provided it uses the one at the cursor
-function M.climb_until_type(type, node) 
+function M.climb_until_type(type, node)
     local cur_node = node or ts_utils.get_node_at_cursor()
     while cur_node ~= nil and cur_node:type() ~= type do
         cur_node = cur_node:parent()
@@ -61,8 +59,8 @@ function M.climb_until_type(type, node)
     return cur_node
 end
 
--- Gets the name of the struct that the cursor is in
-function M.get_outer_struct_name()
+-- Gets the node of the struct that the cursor is in
+function M.get_outer_struct_node()
     local node = ts_utils.get_node_at_cursor()
     -- Get the child if we're highlighting on 'type'
     if node:type() == 'type_declaration' then
@@ -82,9 +80,33 @@ function M.get_outer_struct_name()
         end
     end
 
+    return node
+end
+
+-- Gets the name of the struct that the cursor is in
+function M.get_outer_struct_name()
+    local node = M.get_outer_struct_node()
+
     -- TODO: Check for node:named_child('type'):type() == 'struct_type'?
     local name_node = node:named_child('name')
     return ts_utils.get_node_text(name_node)[1]
+end
+
+-- TODO: Should this be using TS queries?
+function M.get_struct_fields(node)
+    node = node or M.get_outer_struct_node()
+    if node == nil then
+        return {}
+    end
+    node = node:child(1):child(1)
+    local fields = {}
+    for child_node in node:iter_children() do
+        if child_node:type() == 'field_declaration' then
+            table.insert(fields, child_node)
+        end
+    end
+
+    return fields
 end
 
 return M
